@@ -1,0 +1,1422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SENTINEL // FIELD OPS COMMAND</title>
+<meta name="viewport" content="width=1440" />
+<style>
+  /* ---------- TOKENS ---------- */
+  :root{
+    --bg:        #050810;
+    --bg-2:      #070b14;
+    --bg-3:      #0a1018;
+    --panel:     #060a12;
+    --ink:       #cfe2ee;
+    --ink-dim:   #6a8294;
+    --ink-mute:  #3e5566;
+    --grid:      #0f1d28;
+    --grid-2:    #16283a;
+    --amber:     #5fd7ff;
+    --amber-2:   #bdefff;
+    --amber-dim: #1a7da8;
+    --amber-deep:#0a2a3a;
+    --red:       #ff3838;
+    --red-deep:  #5a0a0a;
+    --grey:      #555049;
+    --green:     #6fa84a;
+    --line:      #0f2a3a;
+    --line-hot:  #1c4f6e;
+    --mono: "JetBrains Mono","IBM Plex Mono","Courier New",ui-monospace,monospace;
+    --cond: "Barlow Semi Condensed","Roboto Condensed","Helvetica Neue",sans-serif;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:11px;line-height:1.35;letter-spacing:.02em;-webkit-font-smoothing:antialiased}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(1200px 700px at 50% 40%, #0a1422 0%, #060a12 60%, #02040a 100%);
+  }
+
+  /* Subtle scanline overlay across whole UI */
+  body::before{
+    content:"";
+    position:fixed;inset:0;pointer-events:none;z-index:200;
+    background: repeating-linear-gradient(0deg, rgba(95,215,255,0.025) 0 1px, transparent 1px 3px);
+    mix-blend-mode:screen;
+  }
+  body::after{
+    content:"";
+    position:fixed;inset:0;pointer-events:none;z-index:201;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
+  }
+
+  button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+  /* ---------- LAYOUT ---------- */
+  .app{
+    display:grid;
+    grid-template-rows: 28px 76px 1fr 22px;
+    grid-template-columns: 1fr;
+    height:100vh;min-height:760px;
+  }
+
+  /* ---------- TICKER ---------- */
+  .ticker{
+    display:flex;align-items:center;
+    border-bottom:1px solid var(--line);
+    background:#070706;
+    overflow:hidden;
+    font-size:10px;color:var(--ink-dim);
+    letter-spacing:.12em;text-transform:uppercase;
+  }
+  .ticker .tag{
+    flex:0 0 auto;padding:0 12px;height:100%;display:flex;align-items:center;
+    background:var(--amber);color:#0a0a0a;font-weight:700;letter-spacing:.18em;
+  }
+  .ticker .scroll{
+    flex:1;white-space:nowrap;overflow:hidden;position:relative;
+    -webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);
+            mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);
+  }
+  .ticker .scroll-inner{
+    display:inline-block;padding-left:100%;
+    animation: marquee 90s linear infinite;
+  }
+  .ticker .scroll-inner span{margin-right:48px}
+  .ticker .scroll-inner em{color:var(--amber);font-style:normal}
+  .ticker .scroll-inner b{color:var(--red);font-weight:400}
+  @keyframes marquee{ to { transform:translateX(-100%) } }
+  .ticker .clock{flex:0 0 auto;padding:0 14px;color:var(--amber);border-left:1px solid var(--line)}
+
+  /* ---------- TOP BAR ---------- */
+  .topbar{
+    display:grid;
+    grid-template-columns: 280px 1fr auto;
+    align-items:stretch;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0d0c0a,#0a0a09);
+  }
+  .brand{
+    display:flex;align-items:center;gap:14px;
+    padding:0 16px;border-right:1px solid var(--line);
+  }
+  .brand .mark{
+    width:30px;height:30px;border:1px solid var(--amber);position:relative;
+    box-shadow:0 0 8px rgba(95,215,255,.35), inset 0 0 8px rgba(95,215,255,.25);
+  }
+  .brand .mark::before,
+  .brand .mark::after{
+    content:"";position:absolute;background:var(--amber);
+  }
+  .brand .mark::before{ left:50%;top:-3px;bottom:-3px;width:1px;transform:translateX(-50%) }
+  .brand .mark::after { top:50%;left:-3px;right:-3px;height:1px;transform:translateY(-50%) }
+  .brand .mark i{
+    position:absolute;inset:6px;border:1px solid var(--amber-dim);
+    background:radial-gradient(circle, rgba(95,215,255,.55), transparent 60%);
+  }
+  .brand .name{font-family:var(--cond);font-weight:700;letter-spacing:.32em;font-size:14px;color:var(--ink)}
+  .brand .name em{color:var(--amber);font-style:normal}
+  .brand .sub{font-size:9px;color:var(--ink-dim);letter-spacing:.22em;margin-top:2px}
+
+  .stats{
+    display:grid;grid-template-columns: repeat(6,1fr);
+    border-right:1px solid var(--line);
+  }
+  .stat{
+    padding:6px 12px;border-right:1px solid var(--line);
+    display:flex;flex-direction:column;justify-content:center;gap:2px;
+    position:relative;min-width:0;overflow:hidden;
+  }
+  .stat:last-child{border-right:none}
+  .stat .lbl{font-size:9px;letter-spacing:.22em;color:var(--ink-dim);text-transform:uppercase;display:flex;align-items:center;gap:6px}
+  .stat .lbl::before{content:"";width:5px;height:5px;background:var(--amber);box-shadow:0 0 5px var(--amber)}
+  .stat .val{font-family:var(--cond);font-weight:600;font-size:18px;letter-spacing:.04em;color:var(--ink);line-height:1.1;white-space:nowrap}
+  .stat .val em{font-style:normal;color:var(--amber)}
+  .stat .delta{font-size:9px;color:var(--ink-mute);letter-spacing:.16em}
+  .stat .delta b{font-weight:400;color:var(--green)}
+  .stat .delta b.neg{color:var(--red)}
+  .stat.alert .lbl::before{background:var(--red);box-shadow:0 0 6px var(--red);animation:blink 1.2s steps(2) infinite}
+  .stat.alert .val em{color:var(--red)}
+  .stat.warn .lbl::before{background:var(--amber-2)}
+  @keyframes blink{50%{opacity:.25}}
+
+  .topbar-right{
+    display:flex;align-items:stretch;
+  }
+  .clock-block{
+    padding:8px 18px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;
+    border-left:1px solid var(--line);min-width:200px;
+  }
+  .clock-block .zulu{font-family:var(--cond);font-size:20px;letter-spacing:.14em;color:var(--amber);font-weight:600}
+  .clock-block .zulu small{color:var(--ink-dim);font-size:10px;margin-left:6px;letter-spacing:.18em}
+  .clock-block .date{font-size:9px;color:var(--ink-dim);letter-spacing:.22em;text-transform:uppercase;margin-top:3px}
+
+  .health{
+    display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--line);
+  }
+  .health .bars{display:flex;gap:2px;align-items:flex-end;height:18px}
+  .health .bars i{display:block;width:3px;background:var(--amber);box-shadow:0 0 4px var(--amber-deep)}
+  .health .bars i:nth-child(1){height:30%}
+  .health .bars i:nth-child(2){height:55%}
+  .health .bars i:nth-child(3){height:75%}
+  .health .bars i:nth-child(4){height:90%}
+  .health .bars i:nth-child(5){height:60%;background:var(--amber-dim)}
+  .health .bars i:nth-child(6){height:40%;background:var(--amber-deep)}
+  .health .label{font-size:9px;color:var(--ink-dim);letter-spacing:.18em;text-transform:uppercase}
+  .health .label b{display:block;color:var(--amber);font-weight:600;font-size:11px;letter-spacing:.12em}
+
+  /* ---------- MAIN GRID ---------- */
+  .main{
+    display:grid;
+    grid-template-columns: 320px 1fr 360px;
+    gap:0;
+    border-bottom:1px solid var(--line);
+    min-height:0;
+  }
+
+  /* Generic panel — inset CRT screen feel */
+  .panel{
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgba(95,215,255,.04), transparent 60%),
+      var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;flex-direction:column;
+    min-height:0;
+    position:relative;
+    box-shadow: inset 0 0 0 1px rgba(95,215,255,.05), inset 0 0 60px rgba(0,0,0,.6);
+  }
+  .panel::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background: radial-gradient(140% 90% at 50% 50%, transparent 60%, rgba(0,0,0,.55) 100%);
+  }
+  .panel:last-child{border-right:none}
+
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:7px 12px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(95,215,255,.06), transparent);
+    position:relative;
+  }
+  .panel-head::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber);
+    box-shadow:0 0 6px var(--amber-deep);
+  }
+  .panel-head h2{
+    font-family:var(--cond);font-weight:700;letter-spacing:.24em;font-size:11px;color:var(--ink);
+    text-transform:uppercase;display:flex;align-items:center;gap:8px;
+  }
+  .panel-head h2 .id{color:var(--amber);font-weight:500}
+  .panel-head .meta{font-size:9px;color:var(--ink-dim);letter-spacing:.18em;display:flex;gap:10px}
+  .panel-head .meta b{font-weight:400;color:var(--ink)}
+  .panel-head .meta .dot{width:5px;height:5px;background:var(--amber);display:inline-block;border-radius:0;box-shadow:0 0 4px var(--amber);align-self:center}
+
+  .panel-body{flex:1;min-height:0;overflow:auto}
+  .panel-body::-webkit-scrollbar{width:6px;height:6px}
+  .panel-body::-webkit-scrollbar-track{background:#0a0a09}
+  .panel-body::-webkit-scrollbar-thumb{background:var(--line-hot)}
+
+  /* ---------- LEFT: ROSTER ---------- */
+  .roster-tools{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border-bottom:1px solid var(--line);
+  }
+  .roster-tools button{
+    padding:6px 0;font-size:9px;letter-spacing:.18em;color:var(--ink-dim);
+    border-right:1px solid var(--line);text-transform:uppercase;
+  }
+  .roster-tools button:last-child{border-right:none}
+  .roster-tools button.on{color:var(--amber);background:rgba(95,215,255,.08);box-shadow:inset 0 -2px 0 var(--amber)}
+
+  .roster-summary{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    border-bottom:1px solid var(--line);
+    background:#080807;
+  }
+  .roster-summary div{
+    padding:6px 8px;border-right:1px solid var(--line);
+  }
+  .roster-summary div:last-child{border-right:none}
+  .roster-summary .k{font-size:9px;color:var(--ink-dim);letter-spacing:.14em}
+  .roster-summary .v{font-family:var(--cond);font-size:17px;font-weight:600;color:var(--amber);letter-spacing:.04em}
+  .roster-summary .v.red{color:var(--red)}
+  .roster-summary .v.grey{color:var(--ink-mute)}
+  .roster-summary .v.ptn{color:#5be36b}
+
+  .team{
+    border-bottom:1px solid var(--line);
+  }
+  .team-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:5px 10px;background:#0a0a09;
+    font-size:9px;letter-spacing:.22em;color:var(--ink-dim);text-transform:uppercase;
+    border-bottom:1px solid var(--grid);
+  }
+  .team-head .name{display:flex;align-items:center;gap:8px;color:var(--amber)}
+  .team-head .name::before{
+    content:"";width:0;height:0;border-style:solid;border-width:4px 0 4px 6px;
+    border-color:transparent transparent transparent var(--amber);
+  }
+  .team-head .meta b{color:var(--ink);font-weight:400;margin-left:4px}
+
+  .unit{
+    display:grid;
+    grid-template-columns: 22px 1fr 70px;
+    align-items:center;gap:8px;
+    padding:7px 10px;border-bottom:1px solid var(--grid);
+    cursor:pointer;position:relative;
+  }
+  .unit:last-child{border-bottom:none}
+  .unit:hover{background:rgba(95,215,255,.04)}
+  .unit.sel{background:rgba(95,215,255,.10)}
+  .unit.sel::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--amber);
+  }
+
+  .badge{
+    width:18px;height:18px;border:1px solid var(--line-hot);
+    display:flex;align-items:center;justify-content:center;
+    font-size:9px;font-weight:600;color:var(--amber);font-family:var(--cond);letter-spacing:.04em;
+    background:#0a0a09;
+  }
+  .unit.alert .badge{border-color:var(--red);color:var(--red)}
+  .unit.off   .badge{border-color:var(--grey);color:var(--grey)}
+  .unit.ptn   .badge{border-color:#5be36b;color:#5be36b}
+  .unit.ptn:hover{background:rgba(91,227,107,.05)}
+  .pip.ptn{color:#5be36b}
+  .pip.ptn::before{background:#5be36b;box-shadow:0 0 4px #5be36b}
+  .vitals i.g{background:#5be36b!important;opacity:.85}
+  .team-head .name.ptn{color:#5be36b}
+  .team-head .name.ptn::before{border-color:transparent transparent transparent #5be36b}
+
+  .unit .who .cs{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.1em;color:var(--ink)}
+  .unit .who .nm{font-size:9px;color:var(--ink-dim);letter-spacing:.1em;margin-top:1px}
+  .unit .who .nm em{color:var(--amber);font-style:normal}
+
+  .unit .stat-col{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+  .pip{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--ink-dim);letter-spacing:.1em}
+  .pip::before{content:"";width:6px;height:6px;background:var(--amber);box-shadow:0 0 4px var(--amber)}
+  .pip.alert{color:var(--red)}
+  .pip.alert::before{background:var(--red);box-shadow:0 0 5px var(--red);animation:blink 1s steps(2) infinite}
+  .pip.off{color:var(--grey)}
+  .pip.off::before{background:var(--grey);box-shadow:none}
+
+  .vitals{height:8px;display:flex;align-items:center;gap:1px}
+  .vitals i{width:2px;background:var(--amber-dim);height:30%}
+  .vitals i.h2{height:60%}
+  .vitals i.h3{height:90%;background:var(--amber)}
+  .vitals i.h0{background:var(--ink-mute);height:20%}
+  .unit.alert .vitals i{background:var(--red)}
+  .unit.off   .vitals i{background:var(--grey)}
+
+  /* ---------- CENTER: MAP ---------- */
+  .map-wrap{position:relative;flex:1;min-height:0;overflow:hidden;background:#02040a}
+  .sat-base{position:absolute;inset:0;width:100%;height:100%;filter:saturate(.6) brightness(.7) contrast(1.1)}
+  .map-bg{
+    position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(900px 600px at 55% 50%, rgba(8,18,28,0) 0%, rgba(2,4,8,.5) 70%, rgba(0,0,0,.85) 100%);
+    mix-blend-mode:multiply;
+  }
+  .map-grid{
+    position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(95,215,255,.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(95,215,255,.10) 1px, transparent 1px),
+      linear-gradient(rgba(95,215,255,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(95,215,255,.04) 1px, transparent 1px);
+    background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+    mix-blend-mode:screen;
+  }
+  .map-scan{
+    position:absolute;inset:0;
+    background: repeating-linear-gradient(0deg, rgba(95,215,255,.05) 0 1px, transparent 1px 4px);
+    pointer-events:none;
+    animation: scanmove 9s linear infinite;
+  }
+  @keyframes scanmove{ to { background-position-y: 4px } }
+
+  .map-vignette{
+    position:absolute;inset:0;pointer-events:none;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,.7) 100%);
+  }
+
+  /* Map svg layer */
+  .map-svg{position:absolute;inset:0;width:100%;height:100%}
+
+  /* Map UI overlays */
+  .map-corner{
+    position:absolute;font-family:var(--cond);font-size:10px;letter-spacing:.22em;
+    color:var(--amber-dim);text-transform:uppercase;display:flex;gap:10px;align-items:center;
+    pointer-events:none;
+  }
+  .map-corner.tl{top:10px;left:12px}
+  .map-corner.tr{top:10px;right:12px}
+  .map-corner.bl{bottom:10px;left:12px}
+  .map-corner.br{bottom:10px;right:12px}
+  .map-corner b{color:var(--amber);font-weight:500}
+
+  .map-tools{
+    position:absolute;top:38px;right:12px;display:flex;flex-direction:column;gap:4px;
+  }
+  .map-tools button{
+    width:30px;height:30px;border:1px solid var(--line-hot);background:rgba(10,10,10,.65);
+    color:var(--amber-dim);font-family:var(--cond);font-size:14px;letter-spacing:.05em;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .map-tools button:hover, .map-tools button.on{
+    color:var(--amber);border-color:var(--amber);box-shadow:inset 0 0 8px rgba(95,215,255,.2);
+  }
+
+  .map-legend{
+    position:absolute;left:12px;bottom:38px;
+    border:1px solid var(--line);background:rgba(8,8,7,.85);
+    padding:8px 10px;
+    display:flex;flex-direction:column;gap:5px;
+  }
+  .map-legend .row{display:flex;align-items:center;gap:8px;font-size:9px;letter-spacing:.16em;color:var(--ink-dim);text-transform:uppercase}
+  .map-legend .sym{width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--amber);color:var(--amber);font-size:9px;font-family:var(--cond)}
+  .map-legend .sym.r{border-color:var(--red);color:var(--red)}
+  .map-legend .sym.p{border-color:#5be36b;color:#5be36b}
+  .map-legend .sym.o{border-color:var(--grey);color:var(--grey)}
+  .map-legend .sym.t{border:none;background:transparent;position:relative}
+  .map-legend .sym.t::before{content:"";position:absolute;left:50%;top:50%;width:8px;height:8px;border:1px solid var(--amber);transform:translate(-50%,-50%) rotate(45deg)}
+
+  .map-scale{
+    position:absolute;right:12px;bottom:38px;
+    display:flex;flex-direction:column;gap:4px;font-size:9px;color:var(--ink-dim);letter-spacing:.18em;align-items:flex-end;
+  }
+  .map-scale .bar{display:flex;height:6px;border:1px solid var(--amber-dim)}
+  .map-scale .bar i{flex:1;border-right:1px solid var(--amber-dim);background:transparent}
+  .map-scale .bar i:nth-child(odd){background:var(--amber-dim)}
+  .map-scale .bar i:last-child{border-right:none}
+
+  .crosshair{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:120px;height:120px;pointer-events:none;
+  }
+  .crosshair::before,.crosshair::after{
+    content:"";position:absolute;background:rgba(95,215,255,.55);
+  }
+  .crosshair::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-50%)}
+  .crosshair::after{top:50%;left:0;right:0;height:1px;transform:translateY(-50%)}
+
+  /* Map data strip */
+  .map-strip{
+    border-top:1px solid var(--line);background:#080807;
+    display:grid;grid-template-columns:repeat(8,1fr);
+    flex:0 0 auto;
+  }
+  .map-strip .cell{
+    padding:6px 10px;border-right:1px solid var(--line);
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .map-strip .cell:last-child{border-right:none}
+  .map-strip .k{font-size:8.5px;letter-spacing:.18em;color:var(--ink-dim);text-transform:uppercase}
+  .map-strip .v{font-family:var(--cond);font-size:14px;color:var(--ink);font-weight:600;letter-spacing:.06em}
+  .map-strip .v.amber{color:var(--amber)}
+  .map-strip .v.red{color:var(--red)}
+
+  /* ---------- RIGHT: ALERTS / LOGS / COMMS ---------- */
+  .right-col{display:flex;flex-direction:column;min-height:0}
+  .right-section{
+    display:flex;flex-direction:column;border-bottom:1px solid var(--line);min-height:0;
+  }
+  .right-section:last-child{border-bottom:none;flex:1}
+
+  .alerts{flex:0 0 auto}
+  .alert-row{
+    display:grid;
+    grid-template-columns: 60px 1fr 64px;
+    gap:8px;align-items:center;
+    padding:7px 10px;border-bottom:1px solid var(--grid);
+    position:relative;
+  }
+  .alert-row:last-child{border-bottom:none}
+  .alert-row .pri{
+    font-family:var(--cond);font-size:10px;letter-spacing:.18em;
+    border:1px solid var(--amber);color:var(--amber);text-align:center;padding:2px 0;
+  }
+  .alert-row.crit .pri{border-color:var(--red);color:var(--red);background:rgba(255,56,56,.10)}
+  .alert-row.crit{background:linear-gradient(90deg, rgba(255,56,56,.10), transparent 60%)}
+  .alert-row.crit::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--red);
+    animation:blink 1s steps(2) infinite;
+  }
+  .alert-row .msg{font-size:10.5px;color:var(--ink);letter-spacing:.04em}
+  .alert-row .msg b{color:var(--amber);font-weight:600}
+  .alert-row .msg em{color:var(--ink-dim);font-style:normal;font-size:9px;letter-spacing:.12em;display:block;margin-top:2px;text-transform:uppercase}
+  .alert-row.crit .msg b{color:var(--red)}
+  .alert-row .ts{font-size:9px;color:var(--ink-dim);text-align:right;letter-spacing:.1em}
+  .alert-row .ts b{color:var(--amber);font-weight:500;display:block;font-family:var(--cond);font-size:11px}
+
+  /* Logs table */
+  .log-tools{
+    display:flex;border-bottom:1px solid var(--line);background:#080807;
+  }
+  .log-tools button{
+    flex:1;padding:5px;font-size:9px;letter-spacing:.18em;color:var(--ink-dim);
+    border-right:1px solid var(--line);text-transform:uppercase;
+  }
+  .log-tools button:last-child{border-right:none}
+  .log-tools button.on{color:var(--amber);background:rgba(95,215,255,.08)}
+
+  .log{
+    font-family:var(--mono);font-size:10.5px;line-height:1.55;
+    padding:6px 10px;
+  }
+  .log .line{display:grid;grid-template-columns:62px 50px 1fr;gap:8px;padding:1px 0}
+  .log .t{color:var(--ink-mute)}
+  .log .src{color:var(--amber);letter-spacing:.06em}
+  .log .src.s2{color:var(--amber-2)}
+  .log .src.r{color:var(--red)}
+  .log .src.g{color:var(--green)}
+  .log .src.gy{color:var(--ink-mute)}
+  .log .body{color:var(--ink)}
+  .log .body em{color:var(--amber);font-style:normal}
+  .log .body b{color:var(--red);font-weight:400}
+  .log .body i{color:var(--ink-dim);font-style:normal}
+
+  /* Comms */
+  .comms{
+    flex:1;min-height:0;display:flex;flex-direction:column;
+  }
+  .comms-head{
+    display:grid;grid-template-columns:1fr 1fr 1fr;
+    border-bottom:1px solid var(--line);
+  }
+  .comms-head .ch{
+    padding:6px 10px;border-right:1px solid var(--line);
+    font-size:9px;letter-spacing:.18em;color:var(--ink-dim);text-transform:uppercase;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .comms-head .ch:last-child{border-right:none}
+  .comms-head .ch b{font-family:var(--cond);font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.08em}
+  .comms-head .ch.muted b{color:var(--ink-mute)}
+  .comms-head .ch .lvl{display:flex;gap:1px;height:6px;align-items:flex-end;margin-top:2px}
+  .comms-head .ch .lvl i{width:3px;background:var(--amber);height:30%}
+  .comms-head .ch .lvl i.h2{height:55%}
+  .comms-head .ch .lvl i.h3{height:80%}
+  .comms-head .ch .lvl i.h4{height:95%;background:var(--amber-2)}
+  .comms-head .ch.muted .lvl i{background:var(--grey)}
+
+  .comms-list{
+    flex:1;overflow:auto;padding:6px 0;
+  }
+  .msg-row{
+    display:grid;grid-template-columns:54px 1fr;gap:8px;
+    padding:5px 10px;border-bottom:1px dashed var(--grid);
+  }
+  .msg-row .meta{font-size:9px;color:var(--ink-mute);letter-spacing:.08em;line-height:1.4}
+  .msg-row .meta b{display:block;color:var(--amber);font-family:var(--cond);font-size:12px;font-weight:600;letter-spacing:.06em}
+  .msg-row .meta b.r{color:var(--red)}
+  .msg-row .meta b.g{color:var(--ink-mute)}
+  .msg-row .body{font-size:10.5px;color:var(--ink);letter-spacing:.02em;line-height:1.5}
+  .msg-row .body em{color:var(--amber);font-style:normal}
+  .msg-row .body i{color:var(--ink-dim);font-style:normal}
+
+  .comms-input{
+    border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;padding:6px 10px;background:#080807;
+  }
+  .comms-input .prompt{color:var(--amber);font-family:var(--cond);letter-spacing:.18em;font-size:11px}
+  .comms-input input{
+    flex:1;background:transparent;border:none;outline:none;
+    color:var(--ink);font:inherit;font-size:11px;
+  }
+  .comms-input input::placeholder{color:var(--ink-mute)}
+  .comms-input .send{color:var(--amber);font-size:9px;letter-spacing:.18em;border:1px solid var(--line-hot);padding:3px 8px}
+
+  /* ---------- BOTTOM STATUS ---------- */
+  .footer{
+    display:flex;align-items:center;justify-content:space-between;
+    background:#070706;border-top:1px solid var(--line);
+    font-size:9px;letter-spacing:.2em;color:var(--ink-mute);text-transform:uppercase;
+    padding:0 12px;
+  }
+  .footer .group{display:flex;gap:18px;align-items:center}
+  .footer b{color:var(--amber);font-weight:400}
+  .footer b.r{color:var(--red)}
+  .footer b.g{color:var(--green)}
+  .footer .dot{width:5px;height:5px;background:var(--amber);display:inline-block;box-shadow:0 0 4px var(--amber)}
+  .footer .dot.r{background:var(--red);box-shadow:0 0 5px var(--red);animation:blink 1.2s steps(2) infinite}
+
+  /* corner brackets utility */
+  .brackets{position:relative}
+  .brackets::before,.brackets::after{
+    content:"";position:absolute;width:8px;height:8px;border:1px solid var(--amber);
+  }
+  .brackets::before{left:-1px;top:-1px;border-right:none;border-bottom:none}
+  .brackets::after{right:-1px;bottom:-1px;border-left:none;border-top:none}
+
+  /* Map markers */
+  .marker{transform-box:fill-box;transform-origin:center}
+  .pulse-ring{transform-origin:center;transform-box:fill-box;animation:pulse 2.4s ease-out infinite}
+  .pulse-ring.r{animation-duration:1.4s}
+  .pulse-ring.g{animation-duration:3s}
+  @keyframes pulse{
+    0%  { r:6;  opacity:.7 }
+    100%{ r:34; opacity:0 }
+  }
+  .blink-r{animation:blink 1s steps(2) infinite}
+
+  /* sweep — disabled (war games static) */
+  .sweep{ display:none }
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TICKER ============ -->
+  <div class="ticker">
+    <div class="tag">PRIORITY WIRE</div>
+    <div class="scroll">
+      <div class="scroll-inner">
+        <span><b>◆ FLASH</b> &nbsp; CONTACT REPORTED IN GRID <em>K-7</em> &nbsp; — &nbsp; QRF SPUN UP, ETA <em>04:18</em></span>
+        <span><em>SIGINT</em> intercept inbound from station <em>RAVEN-3</em> · band 412.7 MHz · classified <em>SECRET//NOFORN</em></span>
+        <span><b>◆ ADVISORY</b> weather front moving SW from sector 14, ceiling dropping below 800 ft within 47 minutes</span>
+        <span>Asset <em>HALCYON-04</em> rebased to FOB <em>WHISKEY</em> · fuel state 62% · ammunition load nominal</span>
+        <span><b>◆ CRITICAL</b> drone <em>UAV-119</em> link fluctuation on Ku-band — switching to redundant carrier 22.4°E</span>
+        <span>Mission <em>BLACKBIRD-9</em> phase <em>04 / 06</em> &nbsp; objective <em>SECURE</em> &nbsp; · &nbsp; cas eval pending</span>
+      </div>
+    </div>
+    <div class="clock" id="ticker-clock">07:42:18 LOCAL</div>
+  </div>
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark"><i></i></div>
+      <div>
+        <div class="name">SENT<em>I</em>NEL</div>
+        <div class="sub">FIELD OPS &nbsp;·&nbsp; TIER-II CMD</div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="lbl">Active Units</div>
+        <div class="val"><em>34</em> / 41</div>
+        <div class="delta"><b>+2</b> · last 15m</div>
+      </div>
+      <div class="stat alert">
+        <div class="lbl">Alerts</div>
+        <div class="val"><em>07</em></div>
+        <div class="delta"><b class="neg">+3</b> CRIT · 04 WARN</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Mission Clock</div>
+        <div class="val">04:17:<em>53</em></div>
+        <div class="delta">PHASE 04 / 06</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">Assets DEPL</div>
+        <div class="val">12 <em>VEH</em> · 03 UAV</div>
+        <div class="delta"><b>09</b> ARMED · 06 RTB</div>
+      </div>
+      <div class="stat warn">
+        <div class="lbl">CAS Risk</div>
+        <div class="val">ELEV<em>·</em>03</div>
+        <div class="delta">02 RED · 18 AMBER</div>
+      </div>
+      <div class="stat">
+        <div class="lbl">AO Coverage</div>
+        <div class="val">87.<em>4</em>%</div>
+        <div class="delta"><b>STABLE</b> · 14 sat passes</div>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div class="health">
+        <div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="label">SYS HEALTH<b>NOMINAL · 98.2%</b></div>
+      </div>
+      <div class="clock-block">
+        <div class="zulu" id="zulu-clock">12:42:18<small>Z</small></div>
+        <div class="date" id="zulu-date">FRI · 09 MAY 2026 · DAY 138</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+
+    <!-- ===== LEFT: ROSTER ===== -->
+    <aside class="panel">
+      <div class="panel-head">
+        <h2><span class="id">[01]</span> UNIT ROSTER</h2>
+        <div class="meta"><span class="dot"></span> <b>34</b>/41 ACTIVE</div>
+      </div>
+
+      <div class="roster-tools">
+        <button class="on">ALL</button>
+        <button>TEAMS</button>
+        <button>ASSETS</button>
+        <button>OFFLINE</button>
+      </div>
+
+      <div class="roster-summary">
+        <div><div class="k">FRIENDLY</div><div class="v">28</div></div>
+        <div><div class="k">PARTNER</div><div class="v ptn">19</div></div>
+        <div><div class="k">ALERT</div><div class="v red">06</div></div>
+        <div><div class="k">OFFLINE</div><div class="v grey">07</div></div>
+      </div>
+
+      <div class="panel-body">
+
+        <!-- TEAM ALPHA -->
+        <div class="team">
+          <div class="team-head">
+            <span class="name">TEAM ALPHA · GRID K-7</span>
+            <span class="meta">06 PAX · LD <b>04:11Z</b></span>
+          </div>
+
+          <div class="unit sel">
+            <div class="badge">A1</div>
+            <div class="who">
+              <div class="cs">A1 · COLE, R.</div>
+              <div class="nm">SQD LDR · <em>OBJ: ECHO</em></div>
+            </div>
+            <div class="stat-col">
+              <div class="pip">NOMINAL</div>
+              <div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i></div>
+            </div>
+          </div>
+
+          <div class="unit alert">
+            <div class="badge">A2</div>
+            <div class="who">
+              <div class="cs">A2 · VARGAS, M.</div>
+              <div class="nm">BREACHER · <em>VITALS HI</em></div>
+            </div>
+            <div class="stat-col">
+              <div class="pip alert">HR 142</div>
+              <div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></div>
+            </div>
+          </div>
+
+          <div class="unit">
+            <div class="badge">A3</div>
+            <div class="who">
+              <div class="cs">A3 · OKONKWO, P.</div>
+              <div class="nm">DMR · OBSERVING NW APPROACH</div>
+            </div>
+            <div class="stat-col">
+              <div class="pip">NOMINAL</div>
+              <div class="vitals"><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></div>
+            </div>
+          </div>
+
+          <div class="unit">
+            <div class="badge">A4</div>
+            <div class="who">
+              <div class="cs">A4 · LINDQVIST, A.</div>
+              <div class="nm">MEDIC · LOADOUT 92%</div>
+            </div>
+            <div class="stat-col">
+              <div class="pip">NOMINAL</div>
+              <div class="vitals"><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i></div>
+            </div>
+          </div>
+
+          <div class="unit">
+            <div class="badge">A5</div>
+            <div class="who">
+              <div class="cs">A5 · DOYLE, K.</div>
+              <div class="nm">RTO · COMMS GREEN</div>
+            </div>
+            <div class="stat-col">
+              <div class="pip">NOMINAL</div>
+              <div class="vitals"><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i></div>
+            </div>
+          </div>
+
+          <div class="unit off">
+            <div class="badge">A6</div>
+            <div class="who">
+              <div class="cs">A6 · NAKAMURA, J.</div>
+              <div class="nm">EOD · <em>SIG LOST 02:41</em></div>
+            </div>
+            <div class="stat-col">
+              <div class="pip off">OFFLINE</div>
+              <div class="vitals"><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TEAM BRAVO -->
+        <div class="team">
+          <div class="team-head">
+            <span class="name">TEAM BRAVO · GRID L-9</span>
+            <span class="meta">05 PAX · LD <b>04:11Z</b></span>
+          </div>
+          <div class="unit">
+            <div class="badge">B1</div>
+            <div class="who"><div class="cs">B1 · ADEYEMI, T.</div><div class="nm">SQD LDR · OBSERVING</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">B2</div>
+            <div class="who"><div class="cs">B2 · KOZLOV, D.</div><div class="nm">AR · ROOFTOP O/W</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i></div></div>
+          </div>
+          <div class="unit alert">
+            <div class="badge">B3</div>
+            <div class="who"><div class="cs">B3 · SANTOS, F.</div><div class="nm">SCOUT · <em>CONTACT 80M</em></div></div>
+            <div class="stat-col"><div class="pip alert">CONTACT</div><div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">B4</div>
+            <div class="who"><div class="cs">B4 · HARPER, S.</div><div class="nm">RIFLE · COVERING B3</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">B5</div>
+            <div class="who"><div class="cs">B5 · IBRAHIM, H.</div><div class="nm">RTO · LINK 94%</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i></div></div>
+          </div>
+        </div>
+
+        <!-- TEAM CHARLIE -->
+        <div class="team">
+          <div class="team-head">
+            <span class="name">TEAM CHARLIE · GRID J-6</span>
+            <span class="meta">04 PAX · LD <b>03:58Z</b></span>
+          </div>
+          <div class="unit">
+            <div class="badge">C1</div>
+            <div class="who"><div class="cs">C1 · MORALES, J.</div><div class="nm">SQD LDR · BLOCKING POS.</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">C2</div>
+            <div class="who"><div class="cs">C2 · YOON, J.</div><div class="nm">DMR · O/W ROUTE TANGO</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit alert">
+            <div class="badge">C3</div>
+            <div class="who"><div class="cs">C3 · WALSH, B.</div><div class="nm">RIFLE · <em>HR 138</em></div></div>
+            <div class="stat-col"><div class="pip alert">HR HI</div><div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">C4</div>
+            <div class="who"><div class="cs">C4 · PETROV, V.</div><div class="nm">MEDIC · STAGED W/CAT</div></div>
+            <div class="stat-col"><div class="pip">NOMINAL</div><div class="vitals"><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></div></div>
+          </div>
+        </div>
+
+        <!-- PARTNER FORCES -->
+        <div class="team">
+          <div class="team-head ptn">
+            <span class="name ptn">PARTNER · HN POLICE / LNO</span>
+            <span class="meta">19 PAX · LD <b>03:40Z</b></span>
+          </div>
+          <div class="unit ptn">
+            <div class="badge">P1</div>
+            <div class="who"><div class="cs">HN-03 · CHECKPOINT</div><div class="nm">12 PAX · RTE TANGO JCT</div></div>
+            <div class="stat-col"><div class="pip ptn">NOMINAL</div><div class="vitals"><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h3 g"></i></div></div>
+          </div>
+          <div class="unit ptn">
+            <div class="badge">P2</div>
+            <div class="who"><div class="cs">LNO-01 · NAJIBI, R.</div><div class="nm">LIAISON · W/ ALPHA</div></div>
+            <div class="stat-col"><div class="pip ptn">NOMINAL</div><div class="vitals"><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h3 g"></i></div></div>
+          </div>
+          <div class="unit ptn">
+            <div class="badge">P3</div>
+            <div class="who"><div class="cs">HN-CONVOY-02</div><div class="nm">04 VEH · INBOUND L-8</div></div>
+            <div class="stat-col"><div class="pip ptn">EN ROUTE</div><div class="vitals"><i class="h2 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i><i class="h2 g"></i><i class="h3 g"></i><i class="h2 g"></i></div></div>
+          </div>
+        </div>
+
+        <!-- ASSETS -->
+        <div class="team">
+          <div class="team-head">
+            <span class="name">AIR / GROUND ASSETS</span>
+            <span class="meta">06 ACTIVE</span>
+          </div>
+          <div class="unit">
+            <div class="badge">U1</div>
+            <div class="who"><div class="cs">UAV-117 · HARRIER</div><div class="nm">ALT 14,200 FT · ORBIT K-7</div></div>
+            <div class="stat-col"><div class="pip">FUEL 71%</div><div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit alert">
+            <div class="badge">U2</div>
+            <div class="who"><div class="cs">UAV-119 · HARRIER</div><div class="nm">LINK <em>FLUX</em> Ku-BAND</div></div>
+            <div class="stat-col"><div class="pip alert">DEGRADED</div><div class="vitals"><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">U3</div>
+            <div class="who"><div class="cs">UAV-121 · WRAITH</div><div class="nm">ISR · LOITER L-9</div></div>
+            <div class="stat-col"><div class="pip">FUEL 88%</div><div class="vitals"><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h3"></i><i class="h2"></i></div></div>
+          </div>
+          <div class="unit">
+            <div class="badge">G1</div>
+            <div class="who"><div class="cs">CONVOY-04 · GHOST</div><div class="nm">HEADING 142° · 38 KPH</div></div>
+            <div class="stat-col"><div class="pip">EN ROUTE</div><div class="vitals"><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h2"></i><i class="h3"></i><i class="h2"></i></div></div>
+          </div>
+          <div class="unit off">
+            <div class="badge">G2</div>
+            <div class="who"><div class="cs">CONVOY-07 · GHOST</div><div class="nm">RTB FOB WHISKEY</div></div>
+            <div class="stat-col"><div class="pip off">RTB</div><div class="vitals"><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i><i class="h0"></i></div></div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ===== CENTER: MAP ===== -->
+    <section class="panel" style="border-right:1px solid var(--line)">
+      <div class="panel-head">
+        <h2><span class="id">[02]</span> TACTICAL MAP &nbsp;·&nbsp; AO BLACKBIRD</h2>
+        <div class="meta">
+          <span>GRID <b>38SMB 7421 9180</b></span>
+          <span>·</span>
+          <span>ZOOM <b>1:25K</b></span>
+          <span>·</span>
+          <span>LAYER <b>SAT + IR</b></span>
+          <span class="dot"></span>
+          <span>LIVE</span>
+        </div>
+      </div>
+
+      <div class="map-wrap">
+        <svg class="sat-base" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="satNoise" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="5" seed="14" stitchTiles="stitch"/>
+              <feColorMatrix type="matrix" values="
+                 0.22 0 0 0 0.10
+                 0.20 0 0 0 0.10
+                 0.16 0 0 0 0.09
+                 0    0 0 0 1"/>
+              <feComponentTransfer>
+                <feFuncR type="gamma" amplitude="1.1" exponent="1.4" offset="0.04"/>
+                <feFuncG type="gamma" amplitude="1.1" exponent="1.4" offset="0.04"/>
+                <feFuncB type="gamma" amplitude="1.0" exponent="1.6" offset="0.05"/>
+              </feComponentTransfer>
+            </filter>
+            <filter id="satCoarse" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.0035 0.0045" numOctaves="2" seed="3"/>
+              <feColorMatrix type="matrix" values="
+                 0   0 0 0 0.07
+                 0   0 0 0 0.09
+                 0   0 0 0 0.06
+                 0.6 0 0 0 0"/>
+            </filter>
+            <filter id="vegMask" x="0" y="0" width="100%" height="100%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.006" numOctaves="3" seed="9"/>
+              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3 0 0 0 -1.4"/>
+            </filter>
+            <radialGradient id="satVig" cx="50%" cy="50%" r="60%">
+              <stop offset="0" stop-color="#0a1828" stop-opacity="0"/>
+              <stop offset="1" stop-color="#000" stop-opacity=".6"/>
+            </radialGradient>
+          </defs>
+          <!-- base satellite terrain (warm dust/sand) -->
+          <rect width="1000" height="640" fill="#1a1610"/>
+          <rect width="1000" height="640" filter="url(#satNoise)" opacity="0.95"/>
+          <!-- larger landform variation -->
+          <rect width="1000" height="640" filter="url(#satCoarse)" opacity="0.55" style="mix-blend-mode:screen"/>
+          <!-- vegetation patches (darker olive) -->
+          <g style="mix-blend-mode:multiply" opacity="0.7">
+            <rect width="1000" height="640" fill="#0a1408" filter="url(#vegMask)"/>
+          </g>
+          <!-- river basin (dark) -->
+          <path d="M-20 130 Q 200 200 320 250 T 560 380 T 820 540 L 1020 600 L 1020 640 L -20 640 Z"
+                fill="#06121a" opacity=".0"/>
+          <path d="M-20 130 Q 200 200 320 250 T 560 380 T 820 540 L 1020 600"
+                fill="none" stroke="#040a12" stroke-width="22" stroke-opacity=".75"/>
+          <path d="M-20 130 Q 200 200 320 250 T 560 380 T 820 540 L 1020 600"
+                fill="none" stroke="#0a1a26" stroke-width="9" stroke-opacity=".9"/>
+          <!-- urban blob (lighter, higher reflectance) around K-7 -->
+          <g opacity=".55" style="mix-blend-mode:screen">
+            <ellipse cx="465" cy="335" rx="120" ry="70" fill="#3a3326"/>
+            <ellipse cx="465" cy="335" rx="80" ry="44" fill="#4a4030"/>
+          </g>
+          <!-- field/agriculture grid south -->
+          <g opacity=".25" style="mix-blend-mode:multiply">
+            <rect x="120" y="500" width="280" height="120" fill="#0a0c06"/>
+            <g stroke="#000" stroke-opacity=".5" stroke-width="1">
+              <line x1="160" y1="500" x2="160" y2="620"/>
+              <line x1="200" y1="500" x2="200" y2="620"/>
+              <line x1="240" y1="500" x2="240" y2="620"/>
+              <line x1="280" y1="500" x2="280" y2="620"/>
+              <line x1="320" y1="500" x2="320" y2="620"/>
+              <line x1="360" y1="500" x2="360" y2="620"/>
+              <line x1="120" y1="540" x2="400" y2="540"/>
+              <line x1="120" y1="580" x2="400" y2="580"/>
+            </g>
+          </g>
+          <!-- ridge highlights (sun from NE) -->
+          <g fill="none" stroke="#3a3020" stroke-opacity=".35" stroke-width="2">
+            <path d="M40 480 Q 180 420 320 460 T 600 430 T 980 470"/>
+            <path d="M120 200 Q 260 140 380 180 T 640 160 T 880 200"/>
+          </g>
+          <g fill="none" stroke="#000" stroke-opacity=".4" stroke-width="3">
+            <path d="M44 484 Q 184 424 324 464 T 604 434 T 984 474"/>
+            <path d="M124 204 Q 264 144 384 184 T 644 164 T 884 204"/>
+          </g>
+          <!-- vignette -->
+          <rect width="1000" height="640" fill="url(#satVig)"/>
+        </svg>
+        <div class="map-bg"></div>
+        <div class="map-grid"></div>
+
+        <svg class="map-svg" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#5fd7ff" stroke-opacity=".18" stroke-width="1"/>
+            </pattern>
+            <linearGradient id="ridge" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stop-color="#5fd7ff" stop-opacity=".10"/>
+              <stop offset="1" stop-color="#5fd7ff" stop-opacity="0"/>
+            </linearGradient>
+            <radialGradient id="sweepGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stop-color="#5fd7ff" stop-opacity=".0"/>
+              <stop offset="55%" stop-color="#5fd7ff" stop-opacity=".0"/>
+              <stop offset="98%" stop-color="#5fd7ff" stop-opacity=".5"/>
+              <stop offset="100%" stop-color="#5fd7ff" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- Terrain contours -->
+          <g fill="none" stroke="#5fd7ff" stroke-opacity=".22" stroke-width="1">
+            <path d="M40 480 Q 180 420 320 460 T 600 430 T 980 470"/>
+            <path d="M40 510 Q 200 450 340 490 T 620 460 T 980 500"/>
+            <path d="M40 540 Q 220 480 360 520 T 640 490 T 980 530"/>
+            <path d="M120 200 Q 260 140 380 180 T 640 160 T 880 200"/>
+            <path d="M140 230 Q 280 170 400 210 T 660 190 T 880 230"/>
+          </g>
+          <g fill="none" stroke="#5fd7ff" stroke-opacity=".10" stroke-width="1">
+            <path d="M40 350 Q 220 300 380 340 T 660 310 T 980 350"/>
+            <path d="M40 380 Q 240 330 400 370 T 680 340 T 980 380"/>
+          </g>
+
+          <!-- River -->
+          <path d="M-20 130 Q 200 200 320 250 T 560 380 T 820 540 L 1020 600"
+                fill="none" stroke="#2c5f80" stroke-opacity=".55" stroke-width="6"/>
+          <path d="M-20 130 Q 200 200 320 250 T 560 380 T 820 540 L 1020 600"
+                fill="none" stroke="#3a7aa0" stroke-opacity=".25" stroke-width="14"/>
+
+          <!-- Built-up area / village K-7 -->
+          <g>
+            <rect x="380" y="280" width="170" height="110" fill="url(#hatch)" stroke="#5fd7ff" stroke-opacity=".5" stroke-width="1"/>
+            <g fill="#5fd7ff" fill-opacity=".22" stroke="#5fd7ff" stroke-opacity=".5" stroke-width="1">
+              <rect x="392" y="292" width="22" height="14"/>
+              <rect x="420" y="292" width="34" height="20"/>
+              <rect x="460" y="296" width="24" height="14"/>
+              <rect x="490" y="292" width="30" height="22"/>
+              <rect x="392" y="316" width="40" height="18"/>
+              <rect x="438" y="320" width="22" height="14"/>
+              <rect x="466" y="320" width="38" height="20"/>
+              <rect x="510" y="320" width="28" height="22"/>
+              <rect x="392" y="344" width="28" height="20"/>
+              <rect x="424" y="346" width="36" height="16"/>
+              <rect x="464" y="346" width="22" height="22"/>
+              <rect x="492" y="350" width="38" height="20"/>
+              <rect x="392" y="370" width="50" height="14"/>
+              <rect x="446" y="370" width="32" height="16"/>
+              <rect x="482" y="374" width="46" height="14"/>
+            </g>
+            <text x="380" y="272" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-weight="600" font-size="11" letter-spacing="3">VILLAGE K-7</text>
+          </g>
+
+          <!-- AO boundary -->
+          <path d="M120 110 L 760 90 L 880 460 L 600 580 L 200 540 Z"
+                fill="none" stroke="#5fd7ff" stroke-opacity=".45" stroke-width="1.5" stroke-dasharray="6 4"/>
+          <text x="124" y="104" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" letter-spacing="3">AO BLACKBIRD</text>
+
+          <!-- Phase line -->
+          <line x1="200" y1="220" x2="900" y2="200" stroke="#ff3838" stroke-opacity=".7" stroke-width="1.2" stroke-dasharray="2 4"/>
+          <text x="780" y="194" fill="#ff3838" font-family="Barlow Semi Condensed,sans-serif" font-size="10" letter-spacing="3">PL · CROW</text>
+
+          <!-- Routes -->
+          <path d="M150 560 L 280 500 L 400 430 L 500 360" fill="none" stroke="#5fd7ff" stroke-opacity=".75" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <path d="M860 110 L 760 200 L 660 280 L 560 320" fill="none" stroke="#5fd7ff" stroke-opacity=".5" stroke-width="1.2" stroke-dasharray="2 3"/>
+          <text x="320" y="476" fill="#5fd7ff" font-opacity=".9" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="3">RTE TANGO</text>
+          <text x="700" y="232" fill="#5fd7ff" font-opacity=".7" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="3">RTE WHISKEY</text>
+
+          <!-- Grid labels -->
+          <g fill="#1a7da8" font-family="Barlow Semi Condensed,sans-serif" font-size="10" letter-spacing="3" opacity=".7">
+            <text x="80" y="60">J-5</text><text x="240" y="60">J-6</text><text x="400" y="60">K-6</text><text x="560" y="60">K-7</text><text x="720" y="60">L-7</text><text x="880" y="60">L-8</text>
+            <text x="20" y="180">06</text><text x="20" y="300">07</text><text x="20" y="420">08</text><text x="20" y="540">09</text>
+          </g>
+
+          <!-- Sweep -->
+          <g class="sweep" style="transform-origin:475px 335px">
+            <circle cx="475" cy="335" r="220" fill="url(#sweepGrad)"/>
+          </g>
+
+          <!-- Friendly: Team Alpha (selected) -->
+          <g transform="translate(465 335)">
+            <circle r="6" class="pulse-ring" fill="none" stroke="#5fd7ff" stroke-width="1.5"/>
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#5fd7ff" stroke-width="1.5"/>
+            <line x1="-9" y1="-9" x2="9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <line x1="9"  y1="-9" x2="-9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <text x="14" y="-2" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">ALPHA</text>
+            <text x="14" y="10" fill="#d6d2c4" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">06 PAX · MOVE</text>
+          </g>
+
+          <!-- Friendly: Team Bravo -->
+          <g transform="translate(640 380)">
+            <circle r="6" class="pulse-ring" fill="none" stroke="#5fd7ff" stroke-width="1.2"/>
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#5fd7ff" stroke-width="1.5"/>
+            <line x1="-9" y1="-9" x2="9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <line x1="9"  y1="-9" x2="-9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <text x="14" y="-2" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">BRAVO</text>
+            <text x="14" y="10" fill="#d6d2c4" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">05 PAX · O/W</text>
+          </g>
+
+          <!-- Friendly: Team Charlie (blocking) -->
+          <g transform="translate(300 460)">
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#5fd7ff" stroke-width="1.5"/>
+            <line x1="-9" y1="-9" x2="9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <line x1="9"  y1="-9" x2="-9" y2="9" stroke="#5fd7ff" stroke-width="1.2"/>
+            <text x="14" y="-2" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">CHARLIE</text>
+            <text x="14" y="10" fill="#d6d2c4" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">04 PAX · BP</text>
+          </g>
+
+          <!-- Convoy GHOST-04 -->
+          <g transform="translate(220 510)">
+            <rect x="-10" y="-7" width="20" height="14" fill="#0a0a0a" stroke="#5fd7ff" stroke-width="1.4"/>
+            <rect x="-3" y="-3" width="6" height="6" fill="#5fd7ff"/>
+            <text x="14" y="3" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">CONVOY-04</text>
+          </g>
+
+          <!-- UAV orbit -->
+          <ellipse cx="475" cy="320" rx="120" ry="60" fill="none" stroke="#5fd7ff" stroke-opacity=".35" stroke-dasharray="2 4" stroke-width="1"/>
+          <g transform="translate(593 318)">
+            <polygon points="0,-7 7,5 -7,5" fill="none" stroke="#5fd7ff" stroke-width="1.4"/>
+            <line x1="0" y1="-10" x2="0" y2="-14" stroke="#5fd7ff" stroke-width="1"/>
+            <text x="12" y="3" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">UAV-117</text>
+          </g>
+          <g transform="translate(360 290)">
+            <polygon points="0,-7 7,5 -7,5" fill="none" stroke="#ff3838" stroke-width="1.4" class="blink-r"/>
+            <text x="12" y="3" fill="#ff3838" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">UAV-119 · LINK</text>
+          </g>
+
+          <!-- HOSTILE contact (red diamond) -->
+          <g transform="translate(540 360)">
+            <circle r="6" class="pulse-ring r" fill="none" stroke="#ff3838" stroke-width="1.5"/>
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#ff3838" stroke-width="1.5" transform="rotate(45)"/>
+            <text x="14" y="-2" fill="#ff3838" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">HOSTILE · 03</text>
+            <text x="14" y="10" fill="#d6d2c4" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">RNG 80M · BRG 094°</text>
+          </g>
+          <g transform="translate(720 250)">
+            <rect x="-7" y="-7" width="14" height="14" fill="none" stroke="#ff3838" stroke-width="1.3" transform="rotate(45)"/>
+            <text x="12" y="3" fill="#ff3838" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">UNK · 02</text>
+          </g>
+
+          <!-- PARTNER FORCES (green) - host nation police checkpoint -->
+          <g transform="translate(380 470)">
+            <circle r="6" class="pulse-ring g" fill="none" stroke="#5be36b" stroke-width="1.2"/>
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#5be36b" stroke-width="1.5"/>
+            <circle cx="0" cy="0" r="3" fill="#5be36b"/>
+            <text x="14" y="-2" fill="#5be36b" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">PARTNER · HN-03</text>
+            <text x="14" y="10" fill="#cfe2ee" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">CHECKPOINT · 12 PAX</text>
+          </g>
+          <!-- Partner liaison element near OBJ -->
+          <g transform="translate(610 320)">
+            <rect x="-9" y="-9" width="18" height="18" fill="#0a0a0a" stroke="#5be36b" stroke-width="1.5"/>
+            <circle cx="0" cy="0" r="3" fill="#5be36b"/>
+            <text x="14" y="-2" fill="#5be36b" font-family="Barlow Semi Condensed,sans-serif" font-size="10" font-weight="600" letter-spacing="2">PARTNER · LNO-01</text>
+            <text x="14" y="10" fill="#cfe2ee" font-family="JetBrains Mono,monospace" font-size="8" letter-spacing="1">04 PAX · OVERWATCH</text>
+          </g>
+          <!-- Partner convoy moving in -->
+          <g transform="translate(820 420)">
+            <rect x="-10" y="-7" width="20" height="14" fill="#0a0a0a" stroke="#5be36b" stroke-width="1.4"/>
+            <circle cx="0" cy="0" r="2.5" fill="#5be36b"/>
+            <text x="14" y="3" fill="#5be36b" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">HN-CONVOY-02</text>
+          </g>
+
+          <!-- Objective ECHO -->
+          <g transform="translate(475 340)">
+            <circle r="22" fill="none" stroke="#5fd7ff" stroke-width="1" stroke-dasharray="3 3"/>
+            <text x="0" y="-26" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" letter-spacing="3" text-anchor="middle">OBJ · ECHO</text>
+          </g>
+
+          <!-- Last known signal A6 -->
+          <g transform="translate(200 280)">
+            <circle r="10" fill="none" stroke="#5a5648" stroke-width="1" stroke-dasharray="2 2"/>
+            <line x1="-7" y1="-7" x2="7" y2="7" stroke="#5a5648"/>
+            <line x1="7" y1="-7" x2="-7" y2="7" stroke="#5a5648"/>
+            <text x="14" y="-2" fill="#8a8576" font-family="Barlow Semi Condensed,sans-serif" font-size="9" letter-spacing="2">A6 · LKP</text>
+            <text x="14" y="10" fill="#5a5648" font-family="JetBrains Mono,monospace" font-size="8">02:41Z</text>
+          </g>
+
+          <!-- FOB Whiskey -->
+          <g transform="translate(140 590)">
+            <rect x="-12" y="-12" width="24" height="24" fill="none" stroke="#5fd7ff" stroke-width="1.4"/>
+            <line x1="-12" y1="0" x2="12" y2="0" stroke="#5fd7ff"/>
+            <line x1="0" y1="-12" x2="0" y2="12" stroke="#5fd7ff"/>
+            <text x="18" y="-3" fill="#5fd7ff" font-family="Barlow Semi Condensed,sans-serif" font-size="10" letter-spacing="2">FOB · WHISKEY</text>
+            <text x="18" y="10" fill="#d6d2c4" font-family="JetBrains Mono,monospace" font-size="8">38SMB 7218 8804</text>
+          </g>
+
+          <!-- ridge shading -->
+          <path d="M0 60 L 1000 60 L 1000 110 Q 700 90 400 110 Q 200 120 0 100 Z" fill="url(#ridge)"/>
+        </svg>
+
+        <div class="crosshair"></div>
+        <div class="map-scan"></div>
+        <div class="map-vignette"></div>
+
+        <div class="map-corner tl">N · 34°<b>27'14"</b> &nbsp; E · 069°<b>11'05"</b></div>
+        <div class="map-corner tr">FRAME <b>0418/Z</b> · LAT 100MS</div>
+        <div class="map-corner bl">ELEV <b>1,824 M</b> · SLOPE 04°</div>
+        <div class="map-corner br">WIND <b>SW 11 KT</b> · VIS 6.4 KM</div>
+
+        <div class="map-tools">
+          <button class="on" title="Pan">⌖</button>
+          <button title="Measure">⊟</button>
+          <button title="Layers">≣</button>
+          <button title="Mark">+</button>
+          <button title="Track">◎</button>
+          <button title="Zoom in">＋</button>
+          <button title="Zoom out">−</button>
+        </div>
+
+        <div class="map-legend">
+          <div class="row"><span class="sym">F</span> FRIENDLY · BLUE</div>
+          <div class="row"><span class="sym p">P</span> PARTNER · HN / COALITION</div>
+          <div class="row"><span class="sym r">H</span> HOSTILE · CONFIRMED</div>
+          <div class="row"><span class="sym t"></span>UNKNOWN CONTACT</div>
+          <div class="row"><span class="sym o">×</span> OFFLINE / LKP</div>
+        </div>
+
+        <div class="map-scale">
+          <div class="bar"><i></i><i></i><i></i><i></i><i></i></div>
+          <div>0 &nbsp;·&nbsp; 250 &nbsp;·&nbsp; 500 M</div>
+        </div>
+      </div>
+
+      <!-- map data strip -->
+      <div class="map-strip">
+        <div class="cell"><div class="k">Selected</div><div class="v amber">A1 · COLE</div></div>
+        <div class="cell"><div class="k">Position</div><div class="v">38S MB 7421 9180</div></div>
+        <div class="cell"><div class="k">Heading</div><div class="v amber">094°</div></div>
+        <div class="cell"><div class="k">Speed</div><div class="v">3.4 m/s</div></div>
+        <div class="cell"><div class="k">Range / OBJ</div><div class="v amber">62 M</div></div>
+        <div class="cell"><div class="k">Threat</div><div class="v red">ELEV · 03</div></div>
+        <div class="cell"><div class="k">Comms</div><div class="v amber">SAT-2 · 96%</div></div>
+        <div class="cell"><div class="k">Air Cover</div><div class="v">UAV-117 + 121</div></div>
+      </div>
+    </section>
+
+    <!-- ===== RIGHT: ALERTS / LOGS / COMMS ===== -->
+    <aside class="panel right-col" style="border-right:none">
+
+      <!-- ALERTS -->
+      <div class="right-section alerts">
+        <div class="panel-head">
+          <h2><span class="id">[03]</span> ALERTS · PRIORITY</h2>
+          <div class="meta"><span class="dot"></span> <b>07</b> ACTIVE</div>
+        </div>
+
+        <div class="alert-row crit">
+          <div class="pri">CRIT-1</div>
+          <div class="msg"><b>CONTACT · K-7</b> 03 hostiles, BRG 094°, RNG 80M<em>BRAVO-3 · 04:17:38Z</em></div>
+          <div class="ts"><b>0:00:32</b>AGO</div>
+        </div>
+        <div class="alert-row crit">
+          <div class="pri">CRIT-2</div>
+          <div class="msg"><b>UAV-119 · LINK</b> Ku-band degraded, switching carrier<em>SIGOPS · 04:14:02Z</em></div>
+          <div class="ts"><b>0:04:08</b>AGO</div>
+        </div>
+        <div class="alert-row">
+          <div class="pri">WARN</div>
+          <div class="msg"><b>VITALS · A2</b> HR 142 bpm sustained &gt; 4 min<em>MED-MON · 04:13:47Z</em></div>
+          <div class="ts"><b>0:04:23</b>AGO</div>
+        </div>
+        <div class="alert-row">
+          <div class="pri">WARN</div>
+          <div class="msg"><b>WX · CEILING</b> 800 FT in 47 MIN, sector 14<em>METEO · 04:11:16Z</em></div>
+          <div class="ts"><b>0:06:54</b>AGO</div>
+        </div>
+        <div class="alert-row">
+          <div class="pri">INFO</div>
+          <div class="msg"><b>A6 · LOST</b> tracker silent · LKP 38S MB 7194 8862<em>TRK · 02:41:09Z</em></div>
+          <div class="ts"><b>2:01:01</b>AGO</div>
+        </div>
+      </div>
+
+      <!-- LOGS -->
+      <div class="right-section">
+        <div class="panel-head">
+          <h2><span class="id">[04]</span> EVENT LOG</h2>
+          <div class="meta">FILTER · ALL · 1,284 EVT</div>
+        </div>
+        <div class="log-tools">
+          <button class="on">ALL</button>
+          <button>SIGINT</button>
+          <button>MED</button>
+          <button>OPS</button>
+          <button>SYS</button>
+        </div>
+        <div class="log" id="event-log">
+          <div class="line"><span class="t">04:18:02</span><span class="src">OPS</span><span class="body">ALPHA pushing to <em>OBJ ECHO</em> · file order &middot; <i>ack TOC</i></span></div>
+          <div class="line"><span class="t">04:17:38</span><span class="src r">CONT</span><span class="body"><b>CONTACT</b> BRAVO-3 · 03× hostiles · BRG 094° RNG 80M</span></div>
+          <div class="line"><span class="t">04:17:11</span><span class="src">UAV</span><span class="body">UAV-117 confirms 03 PAX in courtyard, NW window</span></div>
+          <div class="line"><span class="t">04:16:48</span><span class="src g">MED</span><span class="body">A4 advanced w/ medbag · staged at <em>RP-12</em></span></div>
+          <div class="line"><span class="t">04:15:30</span><span class="src">OPS</span><span class="body">CHARLIE BP set, RTE TANGO · weapons hold</span></div>
+          <div class="line"><span class="t">04:14:02</span><span class="src r">SIG</span><span class="body"><b>UAV-119</b> Ku-band SNR 4.2dB · switching to <em>22.4°E</em></span></div>
+          <div class="line"><span class="t">04:13:47</span><span class="src s2">MON</span><span class="body">A2 vitals HR 142 sustained · stress flag <em>AMBER</em></span></div>
+          <div class="line"><span class="t">04:12:55</span><span class="src">SIG</span><span class="body">RAVEN-3 intercept · 412.7 MHz · transcript queued</span></div>
+          <div class="line"><span class="t">04:11:16</span><span class="src s2">WX</span><span class="body">METEO · ceiling forecast 800FT @ 04:58Z</span></div>
+          <div class="line"><span class="t">04:10:02</span><span class="src">OPS</span><span class="body">Phase 03 complete · transitioning <em>PHASE 04</em></span></div>
+          <div class="line"><span class="t">04:08:41</span><span class="src">UAV</span><span class="body">UAV-121 ISR loiter L-9 · loadout nominal</span></div>
+          <div class="line"><span class="t">04:07:14</span><span class="src gy">SYS</span><span class="body">SAT-2 handoff to SAT-4 · gap 38ms</span></div>
+          <div class="line"><span class="t">04:05:50</span><span class="src">OPS</span><span class="body">CONVOY-04 departed FOB WHISKEY · RTE TANGO</span></div>
+          <div class="line"><span class="t">04:01:00</span><span class="src">OPS</span><span class="body">Mission <em>BLACKBIRD-9</em> · phase 03 commit</span></div>
+          <div class="line"><span class="t">02:41:09</span><span class="src r">TRK</span><span class="body">A6 NAKAMURA · tracker SILENT · LKP recorded</span></div>
+        </div>
+      </div>
+
+      <!-- COMMS -->
+      <div class="right-section comms">
+        <div class="panel-head">
+          <h2><span class="id">[05]</span> COMMS FEED</h2>
+          <div class="meta">CH 02 · 412.7 <b>SECURE</b></div>
+        </div>
+        <div class="comms-head">
+          <div class="ch">CH 01 · CMD<b>OPEN</b><span class="lvl"><i></i><i class="h2"></i><i class="h3"></i><i class="h2"></i><i class="h3"></i></span></div>
+          <div class="ch">CH 02 · TAC<b>SECURE</b><span class="lvl"><i class="h2"></i><i class="h3"></i><i class="h4"></i><i class="h3"></i><i class="h4"></i></span></div>
+          <div class="ch muted">CH 03 · LOG<b>QUIET</b><span class="lvl"><i></i><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="comms-list" id="comms-list">
+          <div class="msg-row">
+            <div class="meta"><b>A1</b>04:18:02<br/>CH-02</div>
+            <div class="body">Pushing on <em>ECHO</em>. We have eyes on the courtyard window. <i>How copy?</i></div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b>TOC</b>04:18:11<br/>CH-02</div>
+            <div class="body">Good copy ALPHA. UAV-117 confirms 03 PAX. Cleared hot on <em>your call</em>.</div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b class="r">B3</b>04:17:38<br/>CH-02</div>
+            <div class="body"><i>CONTACT CONTACT CONTACT</i> — 03 squirters east alley, breaking south. Engaging.</div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b>B1</b>04:17:55<br/>CH-02</div>
+            <div class="body">Hold fires team — <em>B3 only</em>. C2 stand by to interdict on RTE TANGO.</div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b>C2</b>04:18:01<br/>CH-02</div>
+            <div class="body">C2 set. Glass on RTE TANGO. <i>Pax in scope, not engaging.</i></div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b>SIG</b>04:14:02<br/>CH-01</div>
+            <div class="body">UAV-119 Ku link degraded. Carrier swap to <em>22.4°E</em> in progress, 8s.</div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b>A4</b>04:16:50<br/>CH-02</div>
+            <div class="body">Medic moving to RP-12 with CAT &amp; chest seals. <i>3 mike out.</i></div>
+          </div>
+          <div class="msg-row">
+            <div class="meta"><b class="g">A6</b>02:41:09<br/>CH-02</div>
+            <div class="body" style="color:var(--ink-mute)">— signal lost — last position <i>38S MB 7194 8862</i></div>
+          </div>
+        </div>
+        <div class="comms-input">
+          <span class="prompt">TX&gt;</span>
+          <input placeholder="TYPE MESSAGE · CH-02 SECURE · ENTER TO TRANSMIT" />
+          <button class="send">SEND</button>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <div class="footer">
+    <div class="group">
+      <span><span class="dot"></span> NETWORK <b class="g">ONLINE</b></span>
+      <span>SAT-2 · <b>96%</b></span>
+      <span>SAT-4 · <b>91%</b></span>
+      <span>MESH · <b>34/41</b></span>
+      <span>ENC · <b>AES-256/GCM</b></span>
+    </div>
+    <div class="group">
+      <span>OPER · <b>K. WEAVER</b> &middot; T-II</span>
+      <span>SHIFT · <b>02 / 03</b></span>
+      <span><span class="dot r"></span> RECORDING</span>
+      <span>BUILD <b>2.41.0-r3</b></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // -- Clocks
+  function pad(n){return String(n).padStart(2,'0')}
+  function tick(){
+    const now = new Date();
+    const z = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+    const l = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} LOCAL`;
+    const days = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const start = new Date(now.getUTCFullYear(),0,0);
+    const diff = now - start;
+    const day = Math.floor(diff / (1000*60*60*24));
+    document.getElementById('zulu-clock').innerHTML = z + '<small>Z</small>';
+    document.getElementById('zulu-date').textContent =
+      `${days[now.getUTCDay()]} · ${pad(now.getUTCDate())} ${months[now.getUTCMonth()]} ${now.getUTCFullYear()} · DAY ${pad(day)}`;
+    document.getElementById('ticker-clock').textContent = l;
+  }
+  tick(); setInterval(tick, 1000);
+
+  // -- Roster row select
+  document.querySelectorAll('.unit').forEach(u=>{
+    u.addEventListener('click',()=>{
+      document.querySelectorAll('.unit.sel').forEach(x=>x.classList.remove('sel'));
+      u.classList.add('sel');
+    });
+  });
+
+  // -- Roster tools toggle
+  document.querySelectorAll('.roster-tools button, .log-tools button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const sib = b.parentNode.querySelectorAll('button');
+      sib.forEach(s=>s.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+
+  // -- Periodic log line
+  const logEl = document.getElementById('event-log');
+  const samples = [
+    ['UAV','UAV-117 frame sync · OBJ ECHO 04°'],
+    ['OPS','ALPHA · 12M from breach point'],
+    ['SIG','RAVEN-3 carrier shift +0.4 kHz'],
+    ['MON','A1 HR 88 · O2 98%'],
+    ['SYS','SAT-2 telemetry burst 1.4 KB'],
+    ['MED','A4 chest seal kit checked'],
+  ];
+  let idx = 0;
+  setInterval(()=>{
+    const now = new Date();
+    const t = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+    const [src,body] = samples[idx % samples.length]; idx++;
+    const div = document.createElement('div');
+    div.className = 'line';
+    div.innerHTML = `<span class="t">${t}</span><span class="src">${src}</span><span class="body">${body}</span>`;
+    logEl.insertBefore(div, logEl.firstChild);
+    while(logEl.children.length > 24) logEl.removeChild(logEl.lastChild);
+  }, 4500);
+
+  // -- Comms send (purely local mock)
+  const cInput = document.querySelector('.comms-input input');
+  const cList  = document.getElementById('comms-list');
+  cInput && cInput.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && e.target.value.trim()){
+      const now = new Date();
+      const t = `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+      const row = document.createElement('div');
+      row.className = 'msg-row';
+      row.innerHTML = `<div class="meta"><b>TOC</b>${t}<br/>CH-02</div><div class="body">${e.target.value.replace(/[<>]/g,'')}</div>`;
+      cList.insertBefore(row, cList.firstChild);
+      e.target.value='';
+    }
+  });
+</script>
+</body>
